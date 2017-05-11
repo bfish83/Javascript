@@ -1,0 +1,931 @@
+//Canvas variables
+var canvas = document.getElementById("myCanvas");
+var ctx = canvas.getContext("2d");
+
+// Sound effect stuff
+var playershoot = new Audio('shoot.wav');
+var player2shoot = new Audio('shoot.wav');
+var enemykilled = new Audio('invaderkilled.wav');
+var enemykilled2 = new Audio('invaderkilled.wav');
+
+// Start screen vars
+var gamestarted = false;
+var title0x = 130;
+var title0y = 200;
+var title1x = 100;
+var title1y = title0y + 60;
+var startx = 90;
+var starty = title1y + 50;
+
+// Select Screen vars
+var oneplayerx =  150;
+var oneplayery = 250;
+var twoplayerx = 150;
+var twoplayery = 285;
+var selecting = false;
+var cursermoved = false;
+
+// False if one player, true if two
+var twoplayermode = false;
+
+//Prevents functions from spamming user with alerts when functions are stuck in loops
+var alertSent = false;
+
+// Pause vars
+var paused = false;
+var pausex = 80;
+var pausey = 256;
+
+//Tank variables
+var tankHeight = 5;
+var tankWidth = 20;
+var uppertankheight = 3;
+var uppertankwidth = 15;
+var barrelWidth = 4;
+var barrelHeight = 4;
+var tankX = 0;
+var tankY = 50;
+var tank2X = 30;
+var rightPressed = false;
+var leftPressed = false;
+var shootpressed = false;
+var collision = true;
+var p2collision = true;
+var pBulletExists = false;
+var p2rightPressed = false;
+var p2leftPressed = false;
+var p2shootpressed = false;
+var p2BulletExists = false;
+
+
+//Enemy variables
+var enemyRowCount = 5;
+var enemyColumnCount = 11;
+var enemyRemaining = enemyColumnCount * enemyRowCount;
+var enemyWidth = 22;
+var enemyHeight = 18;
+var enemyPadding = 10;
+var enemyOffsetTop = 55;
+var enemyOffsetLeft = 53;
+var enemyMove = 3;
+var waveskilled = 0; // Variable that checks how many waves have been killed, used to increase enemy speed
+var speedadjustment = 1; // How much faster enemies should get (speed + speedadjustment)
+
+//Keeps track of the two outer filled columns for movement purposes
+var leftCol = 0;
+var rightCol = enemyColumnCount - 1;
+var enemyanimation = false; // Used to alternate between one of two enemy animations
+var movementcounter = 0;
+var inversemoverate = 200;
+
+//Bullet Variables
+var bulletWidth = 3;
+var pBulletHeight = enemyHeight * 3/5;
+var p2BulletHeight = pBulletHeight;
+var pBulletX = canvas.width/2;
+var pBulletY = canvas.height - tankY - tankHeight - 10;
+var p2BulletX = canvas.width/2;
+var p2BulletY = canvas.height - tankY - tankHeight - 10;
+var pbottomy = pBulletY;
+var p2bottomy = pBulletY;
+var dy = -5;
+var eBulletHeight = enemyHeight;
+var enemyBullets = [];
+
+//Building variables
+var buildingcount = 4;
+var buildingheight = 3;
+var buildingwidth = 4;
+var cavedinheight = 1; // Cavedin variables control the dimensions of the hollow portion of the building
+var blocksidelength = 12;
+var cavedinleft = 1; 
+var cavedinright = 2;
+var buildingoffsetleft = buildingwidth * blocksidelength;
+var buildingoffsetbetween = buildingoffsetleft * 2;
+var buildingoffsettop = canvas.width - tankY + 10;
+
+var buildings = [];
+//Initializes buildings
+for (i = 0; i < buildingcount; i++) {
+	buildings[i] = [];
+	for (j = 0; j < buildingheight; j++)
+	{
+		buildings[i][j] = [];
+		for (k  = 0; k < buildingwidth; k++)
+		{
+			if ((j < cavedinheight) && (k >= cavedinleft) && (k <= cavedinright))
+			{
+				buildings[i][j][k] = { x: 0, y: 0, status: 0 };
+			}
+			else
+			{
+				buildings[i][j][k] = { x: 0, y: 0, status: 4 };
+			}
+		}
+	}
+}
+
+//Score
+var score = 0;
+var p2score = 0;
+
+//Lives
+var lives = 3;
+var p2lives = 3;
+var livesOffsetLeft = 10;
+var livesOffsetBottom = 15;
+var p2livesOffsetLeft = 340;
+
+var enemies = [];
+//Initializes the enemy block
+for (c = 0; c < enemyColumnCount; c++) {
+    enemies[c] = [];
+    for (r = 0; r< enemyRowCount; r++) {
+		enemies[c][r] = { x: 0, y: 0, status: 1 };
+    }
+}
+
+//Listens for event of keys being pressed or not
+document.addEventListener("keydown", keyDownHandler, false);
+document.addEventListener("keyup", keyUpHandler, false);
+
+//e is an event
+function keyDownHandler(e) {
+	if (!gamestarted && e.keyCode == 13){
+		if (!selecting)
+		{
+			selecting = true;
+		}
+		else
+		{
+			gamestarted = true;
+			if (cursermoved) // If player moved curser to two player option
+			{
+				twoplayermode = true;
+			}
+			else
+			{
+				p2lives = 0;
+			}
+		}
+    } else if (lives != 0) // Player 1 can't perform actions if dead
+	{
+	
+		if (e.keyCode == 39) {
+			rightPressed = true;
+		} else if(e.keyCode == 37) {
+			leftPressed = true;
+		} else if ((!paused) && e.keyCode == 38) {
+			shootpressed = true;
+		} else if (e.keyCode == 13) {
+			paused = !paused;
+		}
+	}
+	if (gamestarted && (p2lives != 0)) // Likewise for player 2
+	{
+		if (e.keyCode == 65)
+		{
+			p2leftPressed = true;
+		}
+		else if (e.keyCode == 87)
+		{
+			p2shootpressed = true;
+		}
+		else if (e.keyCode == 68)
+		{
+			p2rightPressed = true;
+		}
+	}
+	
+	// Move cursor for player select screen
+	if (!gamestarted && selecting && ((e.keyCode == 38) || (e.keyCode == 40) || (e.keyCode == 83) || (e.keyCode == 87)))
+	{
+		cursermoved = !cursermoved;
+	}
+	
+	
+}
+function keyUpHandler(e) {
+    if(e.keyCode == 39) {
+        rightPressed = false;
+    } else if(e.keyCode == 37) {
+        leftPressed = false;
+    } else if (e.keyCode == 38) {
+		shootpressed = false;
+	}
+	
+	if (e.keyCode == 65)
+	{
+		p2leftPressed = false;
+	}
+	else if (e.keyCode == 87)
+	{
+		p2shootpressed = false;
+	}
+	else if (e.keyCode == 68)
+	{
+		p2rightPressed = false;
+	}
+}
+
+// Returns a random integer between min (included) and max (included)
+// Using Math.round() will give you a non-uniform distribution!
+function getRandomIntInclusive(min, max) {
+  min = Math.ceil(min);
+  max = Math.floor(max);
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+//Draws bullets if they are shot
+function drawBullets() {
+	//Checks if player bullet exists or if player has pressed shoot button and bullet now exists
+	if (pBulletExists || shootpressed)
+	{
+		//If bullet is newly fired then make sound effect
+		if (!pBulletExists && shootpressed)
+		{
+				playershoot.play();
+		}
+		collision = false;
+		//Set bullet existance to true
+		pBulletExists = true;
+		//Draws bullet
+		ctx.beginPath();
+		ctx.rect(pBulletX, pBulletY, bulletWidth, pBulletHeight);
+		ctx.fillStyle = "#00FF00";
+		ctx.fill();
+		ctx.closePath();
+	}
+	
+	if (p2BulletExists || p2shootpressed)
+	{
+		//If bullet is newly fired then make sound effect
+		if (!p2BulletExists && p2shootpressed)
+		{
+				player2shoot.play();
+		}
+		p2collision = false;
+		//Set bullet existance to true
+		p2BulletExists = true;
+		//Draws bullet
+		ctx.beginPath();
+		ctx.rect(p2BulletX, p2BulletY, bulletWidth, p2BulletHeight);
+		ctx.fillStyle = "#00FF00";
+		ctx.fill();
+		ctx.closePath();
+	}	
+	
+	//Random number to see if enemy fires bullet
+	var randNum = getRandomIntInclusive(1,75);
+	//If randnum is 50 then attempt to fire bullet by checking to make from bottom of columns to see if column has alien to shoot bullet
+	if (randNum == 50) {
+		//Only try to get bullets from within the enemy filed outer and inner columns
+		var randCol = getRandomIntInclusive(leftCol,rightCol);
+		var i = enemyRowCount - 1;
+		var enemyStatus = enemies[randCol][i].status;
+		//Find position of bottom most enemy if one exists in chosen column
+		while(enemyStatus != 1 && i >= 0) {
+			i--;
+		}
+		//Fires bullet if by adding to list of enemy bullets if enemy is in column to fire bullet
+		if (i >= 0){
+			enemyBullets.push({ x: enemies[randCol][i].x + enemyWidth/2, y: enemies[randCol][i].y});
+		}
+	}
+	
+	//Draws each enemy bullet if at least one exists
+	if (enemyBullets.length > 0) {
+		for (var i = 0; i < enemyBullets.length; i++) {		
+			ctx.beginPath();
+			ctx.rect(enemyBullets[i].x, enemyBullets[i].y, bulletWidth, eBulletHeight);
+			ctx.fillStyle = "#00FF00";
+			ctx.fill();
+			ctx.closePath();
+		}
+	}
+}
+
+//Draws user tank
+function drawtank() {
+	if (lives != 0)
+	{
+		ctx.beginPath();
+		ctx.rect(tankX, canvas.height - tankHeight - tankY, tankWidth, tankHeight);
+		ctx.rect(tankX + (tankWidth - uppertankwidth)/2, canvas.height - tankHeight - tankY - uppertankheight, uppertankwidth, uppertankheight);
+		ctx.rect(tankX + tankWidth/2 -  barrelWidth/2, canvas.height - tankY - tankHeight - barrelHeight - uppertankheight, barrelWidth, barrelHeight);
+		ctx.fillStyle = "#00FF00";
+		ctx.fill();
+		ctx.closePath();
+	}
+	if (p2lives != 0)
+	{
+		ctx.beginPath();
+		ctx.rect(tank2X, canvas.height - tankHeight - tankY, tankWidth, tankHeight);
+		ctx.rect(tank2X + (tankWidth - uppertankwidth)/2, canvas.height - tankHeight - tankY - uppertankheight, uppertankwidth, uppertankheight);
+		ctx.rect(tank2X + tankWidth/2 -  barrelWidth/2, canvas.height - tankY - tankHeight - barrelHeight - uppertankheight, barrelWidth, barrelHeight);
+		ctx.fillStyle = "#32BC32";
+		ctx.fill();
+		ctx.closePath();
+	}
+}
+
+//Draws enemy block
+function drawEnemy() {
+	var enemyimage = new Image();
+	var enemy1image = new Image();
+	var enemy2image = new Image();
+	var enemyimagetouse = new Image();
+    for (c = 0; c < enemyColumnCount; c++) {
+		for (r = 0; r < enemyRowCount; r++) {
+			if (enemies[c][r].status == 1) {
+				//If enemy still exists then draw it depending on position in enemy block and position of enemy block in the canvas
+				var enemyX = (c*(enemyWidth + enemyPadding)) + enemyOffsetLeft;
+				var enemyY = (r*(enemyHeight + enemyPadding)) + enemyOffsetTop;
+				enemies[c][r].x = enemyX;
+				enemies[c][r].y = enemyY;
+				//Alternates enemy images
+				if (enemyanimation)
+				{
+					enemy2image.src = 'enemy2a.png';
+					enemy1image.src = 'enemy1a.png';
+					enemyimage.src = 'enemya.png';
+				}
+				else
+				{
+					enemy2image.src = 'enemy2.png';
+					enemy1image.src = 'enemy1.png';
+					enemyimage.src = 'enemy.png';
+				}
+				switch(r) {
+				case 0:
+					enemyimagetouse = enemy2image;
+					break;
+				case 1:
+				case 2:
+					enemyimagetouse = enemy1image;
+					break;
+				case 3:
+				case 4:
+				default:
+					enemyimagetouse = enemyimage;
+					break;
+				}
+				enemyimage.onload = (function(X, Y, image) {
+					ctx.drawImage(image, X, Y);
+				})(enemyX, enemyY, enemyimagetouse);
+				
+			}
+		}
+    }
+}
+
+//Checks to see left and rightmost columns that are filled
+function emptyColumns() {
+	var leftColGone = true;
+	var rightColGone = true;
+	
+	//Checks to see if leftmost column is still filled
+	for(var r = 0; r < enemyRowCount; r++) {
+		if(leftColGone && enemies[leftCol][r].status == 1){
+			leftColGone = false;
+		}
+	}
+	//Checks to see if rightmost column is still filled
+	for(var r = 0; r < enemyRowCount; r++) {
+		if(rightColGone && enemies[rightCol][r].status == 1){
+			rightColGone = false;
+		}
+	}
+	//If no longer filled then move corresponding left or rightmost column marker one column towards the middle
+	if (leftColGone) {
+		leftCol++;
+	}
+	
+	if (rightColGone) {
+		rightCol--;
+	}
+	//If the column values switch value ordering then no columns exist and wave is over
+	if (rightCol < leftCol) {
+		//Alerts user to next round to give them time to get ready
+		if (!alertSent) {
+			alert("ON TO THE NEXT WAVE!");
+		}
+		alertSent = true;
+		waveskilled++;
+		//Rebuilds structures and enemy block for next round
+		rebuildObjects();
+	}
+}
+
+function collisionDetection() {
+	//Checks for collisions involving the enemy block
+    for (c = 0; c < enemyColumnCount; c++) {
+	for (r = 0; r < enemyRowCount; r++) {
+	    var b = enemies[c][r];
+		//if enemy still exists check to see if it is involved in a collision
+	    if (b.status == 1) {
+			//If an enemy is on the same y level as the tank then the player loses
+	        if (b.y >= canvas.height - tankY - enemyHeight * 2) {
+				if (!alertSent) {
+					alert("YOU LOSE!");
+				}
+				alertSent = true;
+				reseteverything();
+				gamestarted = false;
+				selecting = false;
+				rightPressed = false;
+				leftPressed = false;
+				shootpressed = false;
+	           // document.location.reload();
+	            break;
+	        }
+			//Checks to see if player bullet has collided with enemy
+			if ((pBulletY - pBulletHeight) < b.y && (pBulletY - pBulletHeight) > (b.y - enemyHeight) && 
+			    ((pBulletX > b.x && pBulletX < (b.x + enemyWidth)) || ((pBulletX + bulletWidth) > b.x && (pBulletX + bulletWidth) < (b.x + enemyWidth)))) {
+				//Resets player bullet and makes enemy no longer active 
+				pBulletY = pbottomy;
+				b.status = 0;
+				enemykilled.play();
+				collision = true;
+				pBulletExists = false;
+				enemyRemaining--;
+				//Adds score depending on row of destroyed enemy
+				if (r == 4 || r == 3) {
+					score += 10;
+				} else if (r == 2 || r == 1) {
+					score += 20;
+				} else {
+					score += 30;
+				}
+			}
+			if ((p2BulletY - p2BulletHeight) < b.y && (p2BulletY - p2BulletHeight) > (b.y - enemyHeight) && 
+			    ((p2BulletX > b.x && p2BulletX < (b.x + enemyWidth)) || ((p2BulletX + bulletWidth) > b.x && (p2BulletX + bulletWidth) < (b.x + enemyWidth)))) {
+				//Resets player bullet and makes enemy no longer active 
+				p2BulletY = p2bottomy;
+				b.status = 0;
+				enemykilled2.play();
+				p2collision = true;
+				p2BulletExists = false;
+				enemyRemaining--;
+				//Adds score depending on row of destroyed enemy
+				if (r == 4 || r == 3) {
+					p2score += 10;
+				} else if (r == 2 || r == 1) {
+					p2score += 20;
+				} else {
+					p2score += 30;
+				}
+			}
+				//At set intervals of destroyed enemies increases speed of enemy block to mimic the increased speed of original space invaders
+				switch (enemyRemaining) {
+                    //Increases speed of enemies every 5 enemies destroyed
+				    case 50: 
+				        inversemoverate = 180; 
+				        break;
+				    case 45: 
+				        inversemoverate = 160; 
+				        break;
+				    case 40: 
+				        inversemoverate = 140; 
+				        break;
+				    case 35: 
+				        inversemoverate = 120; 
+				        break;
+				    case 30: 
+				        inversemoverate = 100; 
+				        break;
+				    case 25: 
+				        inversemoverate = 80; 
+				        break;
+				    case 20: 
+				        inversemoverate = 60; 
+				        break;
+				    case 15: 
+				        inversemoverate = 30; 
+				        break;
+				    case 10: 
+				        inversemoverate = 10; 
+				        break;
+				    case 5: 
+				        inversemoverate = 6; 
+				        break;
+				    case 1: 
+				        inversemoverate = 2; 
+				        break;
+				    default: break;    
+				}
+	    }
+	}
+    }
+	
+	// Checks to see if each piece of structures has been collided with
+	for (k = 0; k < buildingcount; k++) {
+	    for (i = 0; i < buildingheight; i++) {
+	        for (j = 0; j < buildingwidth; j++) {
+		        var p = buildings[k][i][j];
+				//Checks only if building piece still exists
+	            if (buildings[k][i][j].status >= 1) {
+					//Checks to see if each existing building piece has been collided with a players bullet or ...
+					if ((p2BulletX >= p.x && p2BulletX <= p.x + blocksidelength) && (p2BulletY <= p.y)) {
+						//Resets bullet position 
+			            p2BulletY = p2bottomy;
+						//Decreases size of structure piece
+			            p.status -= 1;
+						//Sets collision to be true
+			            p2collision = true;
+						//Wipes player bullet from game to allow player to shoot again
+			            p2BulletExists = false;
+			        }
+			        if ((pBulletX >= p.x && pBulletX <= p.x + blocksidelength) && (pBulletY <= p.y)) {
+						//Resets bullet position 
+			            pBulletY = pbottomy;
+						//Decreases size of structure piece
+			            p.status -= 1;
+						//Sets collision to be true
+			            collision = true;
+						//Wipes player bullet from game to allow player to shoot again
+			            pBulletExists = false;
+			        } else {
+						//An enemy bullet or ...
+						if (enemyBullets.length > 0) {
+							for(var w = 0; w < enemyBullets.length; w++) {
+								if ((enemyBullets[w].x >= p.x && enemyBullets[w].x <= p.x + blocksidelength) && (enemyBullets[w].y >= p.y) && p.status >= 1) {
+									//Decreases size of structure piece
+									p.status -= 1;
+									//Removes the enemy bullet from the list of active enemy bullets
+									enemyBullets.splice(w,1);
+								}
+							}
+						} else {
+							//One of the existing enemy
+							for (c = 0; c < enemyColumnCount; c++) {
+								for (r = 0; r < enemyRowCount; r++) {
+									var e = enemies[c][r];
+									//If enemy exists and crosses path of building then destroy building
+									if (e.status == 1) {
+										if (((e.x >= p.x && e.x <= p.x + blocksidelength) || (e.x + enemyWidth >= p.x && e.x + enemyWidth <= p.x + blocksidelength )) && 
+										((e.y >= p.y - blocksidelength) || (e.y - enemyHeight >= p.y - blocksidelength))) {
+											p.status = 0;
+										}
+									}
+								}
+							}
+						}
+					}
+	            }
+	        }
+        }
+	}
+}
+
+//Draws building structures pieces if they exist
+function drawBuildings() {
+	// For each building, for each piece of the building height-wise, for each piece of the building width-wise
+	for (k = 0; k < buildingcount; k++) {
+	    for (i = 0; i < buildingheight; i++) {
+	        for (j = 0; j < buildingwidth; j++) {
+				// If the building has not been completely destroyed
+	            if (buildings[k][i][j].status >= 1) {
+				
+					// The height is the normal height minus 2 for each point of damage the building has taken
+			        damagedheight = blocksidelength + 2*(-4 + buildings[k][i][j].status);
+					// The width is the same
+			        damagedwidth = blocksidelength + 2*(-4 + buildings[k][i][j].status);
+					
+					// Then its x-coordinate is the offset plus the length of however many blocks are to its left
+					//  plus an additional offset for each building that's come before it, then centered with regard to its width
+	                var buildingpieceX = buildingoffsetleft + j*blocksidelength + k*(buildingoffsetbetween) - 0.5 * damagedwidth;
+					// Its y-coordinate is the highest (closest to bottom of screen) y-coordinate it is 
+					//  allowed to have minus the length of the blocks below it, then centered
+	                var buildingpieceY = buildingoffsettop - i*blocksidelength - 0.5 * damagedheight;
+					
+					// Assign the coordinates
+	                buildings[k][i][j].x = buildingpieceX;
+	                buildings[k][i][j].y = buildingpieceY;
+					// Begin drawing the block
+	                ctx.beginPath();
+
+	                ctx.rect(buildingpieceX, buildingpieceY, damagedwidth, damagedheight);
+	                ctx.fillStyle = "#00FF00";
+	                ctx.fill();
+	                ctx.closePath();
+	            }
+	        }
+        }
+	}
+}
+
+function reseteverything() {
+	score = 0;
+	p2score = 0;
+	lives = 3;
+	p2lives = 3;
+	tankX = 0;
+	tank2X = 30;
+	rebuildObjects();
+}
+
+//Rebuilds the structures and enemy block for each new wave or for the start of the game
+function rebuildObjects() {
+	//Rebuilds all building structures for next wave
+	for (i = 0; i < buildingcount; i++) {
+		for (j = 0; j < buildingheight; j++)
+		{
+			for (k  = 0; k < buildingwidth; k++)
+			{
+				if ((j < cavedinheight) && (k >= cavedinleft) && (k <= cavedinright))
+				{
+					buildings[i][j][k].status = 0;
+				}
+				else
+				{
+					buildings[i][j][k].status = 4;
+				}
+			}
+		}
+	}
+	
+	//Refills enemy block for next wave
+	for (c = 0; c < enemyColumnCount; c++) {
+		for (r = 0; r< enemyRowCount; r++) {
+			enemies[c][r].status = 1;
+		}
+	}
+	
+	//Resets movement variables for enemy block
+	enemyOffsetTop = 55;
+	enemyOffsetLeft = 53;
+	enemyMove = 3;
+	for (i = 0; i < waveskilled; i++)
+	{
+		enemyMove = enemyMove + speedadjustment;
+	}
+	leftCol = 0;
+	rightCol = enemyColumnCount - 1;
+	enemyanimation = false; // Used to alternate between one of two enemy animations
+	movementcounter = 0;
+	inversemoverate = 200;
+	enemyRemaining = enemyColumnCount * enemyRowCount;
+	alertSent = false;
+}
+
+function drawScore() {
+    //Prints score of player
+    ctx.font = "16px Arial";
+    ctx.fillStyle = "white";
+    ctx.fillText("SCORE < 1 > ", livesOffsetLeft, 20);
+    ctx.fillText(score, livesOffsetLeft * 5, 40);
+	
+	if (twoplayermode)
+	{
+		//Prints score for player 2
+		ctx.font = "16px Arial";
+		ctx.fillStyle = "white";
+		ctx.fillText("SCORE < 2 > ", p2livesOffsetLeft, 20);
+		ctx.fillText(p2score, p2livesOffsetLeft + 40, 40);
+	}
+}
+
+function drawLives() {
+	//Displays user lives
+    ctx.beginPath();
+	ctx.rect(0, canvas.height - tankY, canvas.width, 2);
+	ctx.fillStyle = "white";
+	ctx.fill();
+	ctx.closePath();
+	
+	ctx.font = "30px Arial";
+    ctx.fillStyle = "white";
+    ctx.fillText(lives, livesOffsetLeft, canvas.height - livesOffsetBottom);
+
+	//Displays tanks for each life that user has remaining like in the original space invader game
+    for (var i = 1; i < lives; i++) {
+        ctx.beginPath();
+        ctx.rect(livesOffsetLeft + 40 + 25 * (i-1), canvas.height - livesOffsetBottom - tankHeight, tankWidth, tankHeight);
+        ctx.rect(livesOffsetLeft + 40 + 25 * (i-1) + (tankWidth - uppertankwidth) / 2, canvas.height - livesOffsetBottom - tankHeight - uppertankheight, uppertankwidth, uppertankheight);
+        ctx.rect(livesOffsetLeft + 40 + 25 * (i-1) + tankWidth / 2 - barrelWidth / 2, canvas.height - livesOffsetBottom - tankHeight - barrelHeight - uppertankheight, barrelWidth, barrelHeight);
+        ctx.fillStyle = "#00FF00";
+        ctx.fill();
+        ctx.closePath();
+    }
+	
+	if (twoplayermode)
+	{
+		ctx.font = "30px Arial";
+		ctx.fillStyle = "white";
+		ctx.fillText(p2lives, p2livesOffsetLeft, canvas.height - livesOffsetBottom);
+
+		//Displays tanks for each life that user has remaining like in the original space invader game
+		for (var i = 1; i < p2lives; i++) {
+			ctx.beginPath();
+			ctx.rect(p2livesOffsetLeft + 40 + 25 * (i-1), canvas.height - livesOffsetBottom - tankHeight, tankWidth, tankHeight);
+			ctx.rect(p2livesOffsetLeft + 40 + 25 * (i-1) + (tankWidth - uppertankwidth) / 2, canvas.height - livesOffsetBottom - tankHeight - uppertankheight, uppertankwidth, uppertankheight);
+			ctx.rect(p2livesOffsetLeft + 40 + 25 * (i-1) + tankWidth / 2 - barrelWidth / 2, canvas.height - livesOffsetBottom - tankHeight - barrelHeight - uppertankheight, barrelWidth, barrelHeight);
+			ctx.fillStyle = "#32BC32";
+			ctx.fill();
+			ctx.closePath();
+		}
+	}
+}
+
+//Draw pause screen when user presses enter
+function drawPause()
+{
+	ctx.font = "72px Arial";
+    ctx.fillStyle = "#00FF00";
+    ctx.fillText("PAUSED", pausex, pausey);
+}
+
+//Draws start screen which is seen upon game being loaded
+function drawStartScreen()
+{
+    ctx.font = "64px Arial";
+    ctx.fillStyle = "#00FF00";
+    ctx.fillText("Space", title0x, title0y);
+	ctx.fillText("Invaders", title1x, title1y);
+	ctx.font = "32px Arial";
+	ctx.fillStyle = "white";
+    ctx.fillText("Press Enter to Start", startx, starty);
+}
+
+function drawSelectScreen()
+{
+	ctx.font = "32px Arial";
+    ctx.fillStyle = "#00FF00";
+    ctx.fillText("1 Player", oneplayerx, oneplayery);
+	ctx.fillText("2 Players", twoplayerx, twoplayery);
+	
+	if (!cursermoved)
+	{
+		ctx.beginPath(); 
+		ctx.moveTo(oneplayerx - 10, oneplayery - 10); 
+		ctx.lineTo(oneplayerx - 30, oneplayery - 20); 
+		ctx.lineTo(oneplayerx - 30, oneplayery); 
+		ctx.fill();
+		ctx.closePath();
+	}
+	else
+	{
+		ctx.beginPath(); 
+		ctx.moveTo(twoplayerx - 10, twoplayery - 10); 
+		ctx.lineTo(twoplayerx - 30, twoplayery - 20); 
+		ctx.lineTo(twoplayerx - 30, twoplayery); 
+		ctx.fill();
+		ctx.closePath();
+	}
+}
+
+//Draws everything as needed and acts as main function
+function draw() {
+	//Clear the canvas for new updated drawings
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+	//Start menu screen if user hasnt started game yet
+	if (!gamestarted)
+	{
+		if (selecting)
+		{
+			drawSelectScreen();
+		}
+		else
+		{
+			drawStartScreen();
+		}
+	}
+	//Game has been started
+	else
+	{
+		//Checks if user has paused game
+		if (paused)
+		{
+			drawPause();
+		}
+		else
+		{
+			drawBuildings();
+			drawEnemy();
+			drawBullets();
+			drawtank();
+			drawLives();
+			collisionDetection();
+			emptyColumns();
+			drawScore();
+		
+			//Updates enemy block movement variables if edge of screen has been reached
+			if (enemyOffsetLeft + ((rightCol + 1) * enemyWidth) + (rightCol * enemyPadding) >= canvas.width || enemyOffsetLeft + (leftCol * (enemyPadding + enemyWidth)) <= 0) {
+				enemyMove = -enemyMove;
+				enemyOffsetTop += enemyHeight;
+				enemyOffsetLeft += enemyMove;
+			}
+
+			//Checks to see if player bullet is still on playable screen
+			if (pBulletY + dy < pBulletHeight) {
+				pBulletY = pbottomy;
+				pBulletExists = false;
+			}
+			if (p2BulletY + dy < p2BulletHeight) {
+				p2BulletY = p2bottomy;
+				p2BulletExists = false;
+			}
+			
+			//Updates movement of enemy bullets if they exist
+			if (enemyBullets.length > 0) {
+				for (var i = 0; i < enemyBullets.length; i++) {
+					//Checks if enemy bullet is about to leave the screen
+					if (enemyBullets[i].y - dy >= canvas.height - tankY) {
+						//Checks to see if as enemy bullet reaches bottom it intersects player tank
+						if ((lives != 0) && enemyBullets[i].x >= tankX && enemyBullets[i].x < tankX + tankWidth) {
+							//Updates player lives if so
+							lives--;
+							//If player has no lives then end game
+							if ((p2lives == 0) && (lives == 0)) {
+								if (!alertSent) {
+									alert("YOU LOSE!");
+								}
+								alertSent = true;
+								reseteverything();
+								gamestarted = false;
+								rightPressed = false;
+								selecting = false;
+								leftPressed = false;
+								shootpressed = false;
+								p2rightPressed = false;
+								p2leftPressed = false;
+								p2shootpressed = false;
+								//document.location.reload();
+								break;
+							}
+						}
+						if ((p2lives != 0) && enemyBullets[i].x >= tank2X && enemyBullets[i].x < tank2X + tankWidth) {
+							//Updates player lives if so
+							p2lives--;
+							//If player has no lives then end game
+							if ((p2lives == 0) && (lives == 0)) {
+								if (!alertSent) {
+									alert("YOU LOSE!");
+								}
+								alertSent = true;
+								reseteverything();
+								gamestarted = false;
+								selecting = false;
+								rightPressed = false;
+								leftPressed = false;
+								shootpressed = false;
+								p2rightPressed = false;
+								p2leftPressed = false;
+								p2shootpressed = false;
+								//document.location.reload();
+								break;
+							}
+						}
+						//Remove enemy bullet since it is going off screen
+						enemyBullets.splice(i,1);
+					} else {
+						//Move enemy bullet for next drawing
+						enemyBullets[i].y -= dy;
+					}
+				}
+			}
+			
+			//Adjusts tank movement
+			if (rightPressed && tankX < canvas.width - tankWidth) {
+				tankX += 2;
+			} else if (leftPressed && tankX > 0) {
+				tankX -= 2;
+			}
+			
+			if (p2rightPressed && tank2X < canvas.width - tankWidth) {
+				tank2X += 2;
+			}
+			else if (p2leftPressed && tank2X > 0) {
+				tank2X -= 2;
+			}
+			
+			//Adjusts player bullet movement
+			if (!pBulletExists) {
+				pBulletX = tankX + tankWidth / 2;
+			} else {
+				pBulletY += dy;
+			}
+			
+			if (!p2BulletExists) {
+				p2BulletX = tank2X + tankWidth / 2;
+			}
+			else {
+				p2BulletY += dy;
+			}
+			
+			//Update movement counter for enemy block
+			movementcounter += 2;
+			
+			//Update enemy block movement
+			if (!(movementcounter % inversemoverate))
+			{
+				enemyOffsetLeft += enemyMove;
+				enemyanimation = !enemyanimation;
+			}
+		}
+	}
+}
+
+//Plays the game and keeps everything updating
+setInterval(draw,10);
